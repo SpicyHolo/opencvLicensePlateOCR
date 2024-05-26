@@ -2,6 +2,7 @@ import cv2
 import os
 import numpy as np
 import warnings
+from itertools import combinations
 
 def load_license_plates():
     path = "./data/img/"
@@ -16,7 +17,7 @@ def load_license_plates():
     return data
 
 class ImageSearch:
-    def __init__(self, img, flag):
+    def __init__(self, img, approx_poly_epsilon):
 
         self.src = img.copy()
 
@@ -25,13 +26,18 @@ class ImageSearch:
         self.thresh = self.thresh(self.gray)
         
         # Find license plate rectangle
-        self.license_polygon = self.findLicensePolygon(self.thresh)
+        self.license_polygon = self.findLicensePolygon(self.thresh, approx_poly_epsilon=0.01)
 
         if len(self.license_polygon) != 4:
-            warnings.warn("Could not locate license plate")
-            self.result_img = cv2.drawContours(self.src, [self.license_polygon], -1, (255, 0, 0), 30)
-            return
-    
+            self.license_polygon = self.findLicensePolygon(self.thresh, approx_poly_epsilon=0.02)
+            if len(self.license_polygon) != 4:
+                warnings.warn("Could not locate license plate")
+
+                self.result_img = cv2.drawContours(self.src, self.license_polygon, -1, (0, 0, 255), 10)
+                # Find points that are the closest to a rectangle:
+                #self.license_polygon = self.bounding_parallelogram(self.license_polygon)  
+                return
+        
         # Warp license plate to a rectangle
         self.license_plate = self.warpImage(self.license_polygon, self.gray)
 
@@ -44,6 +50,21 @@ class ImageSearch:
         for seg in self.character_segments:
             x, y, w, h = seg
             cv2.rectangle(self.result_img, (x, y), (x+w, y+h), (255,0,0), 10)
+
+    def bounding_parallelogram(self, contour):
+        # Compute the convex hull of the contour
+        hull = cv2.convexHull(contour)
+
+        # Fit a rotated rectangle to the convex hull
+        rect = cv2.minAreaRect(hull)
+
+        # Extract the vertices of the rotated rectangle
+        box = cv2.boxPoints(rect)
+
+        # Convert the floating-point coordinates to integers
+        box = np.intp(box)
+        box = box.reshape((-1, 1, 2))
+        return box
 
     def __call__(self):
         return self.result_img
@@ -76,6 +97,7 @@ class ImageSearch:
             filter(lambda c: min_ratio < getRectRatio(cv2.boundingRect(c)) < max_ratio, 
             filter(lambda c: min_area < cv2.contourArea(c) < max_area, contours)
         ))
+
         # Approximate contours with polygons
         approxContours = []
         for c in contours:
@@ -101,12 +123,14 @@ class ImageSearch:
             x, y, w, h = rect
             return w*h
 
-        def getRectIntersect(rect1, rect2):
-            "Checks if two rectangles intersect"
+
+        def is_inside(rect1, rect2):
             x1, y1, w1, h1 = rect1
             x2, y2, w2, h2 = rect2
-            return (x1 < x2 + w2) and (x1 + w1 > x2) and (y1 < y2 + h2) and (y1 + h1 > y2)
 
+            # Check if all vertices of rect1 are inside rect2
+            return x2 <= x1 and y2 <= y1 and x2 + w2 >= x1 + w1 and y2 + h2 >= y1 + h1
+        
         def getRectDeviation(rect, mean):
             "Returns value [0-1] of how much the area of given rectangle deviates from mean area"
             area = getRectArea(rect)
@@ -119,11 +143,20 @@ class ImageSearch:
 
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
+        #self.license_plate  = cv2.drawContours(self.license_plate, contours, -1, (255, 0, 255), 10)
+
         # Filter contours, by ratio, and get 8 bigget area rectangles (at most 8 characters in a registration plates)
         boundingRects = list(map(cv2.boundingRect, contours))
-        boundingRects = list(filter(lambda rect: 0.20 < getRectRatio(rect) < 0.9 , boundingRects))
+        boundingRects = list(filter(lambda rect: 0.1 < getRectRatio(rect) < 0.99 , boundingRects))
         boundingRects = sorted(boundingRects, key=getRectArea, reverse=True)
         boundingRects = boundingRects[:8]
+
+        #Characters like [O, 0] sometimes result in two overlapping rectangles
+        # Remove all bounding rectangles that are enclosed
+        boundingRects = list(filter(lambda rectA: not(
+                any([is_inside(rectA, rectB) and (getRectArea(rectA) < getRectArea(rectB)) for rectB in boundingRects])), 
+                boundingRects
+        ))
 
         # Calculate, for each area how far it deviates from mean area
         # Delete the odd rectanggle if deviation is over a value 
@@ -132,14 +165,8 @@ class ImageSearch:
         mean = np.mean(list(map(getRectArea, boundingRects)))
         boundingRects = sorted(boundingRects, key=lambda rect: getRectDeviation(rect, mean), reverse=True)
         if getRectDeviation(boundingRects[0], mean) > epsilon:
+            pass
             boundingRects = boundingRects[1:]
-
-        # Characters like [O, 0] sometimes result in two overlapping rectangles
-        # Remove the smaller intersecting rectangle
-        boundingRects = list(filter(lambda rectA: not(
-                any([getRectIntersect(rectA, rectB) and (getRectArea(rectA) < getRectArea(rectB)) for rectB in boundingRects])), 
-                boundingRects
-        ))
 
         boundingRects = sorted(boundingRects, key=lambda rect: rect[0])  # Sort left to right
 
@@ -161,10 +188,6 @@ class ImageSearch:
         # Clear every pixel except for license plate area
         gray[mask_inv == 255] = 0
 
-        # Cut out license plate bounding box
-        cut_img = np.zeros((h, w), np.uint8)
-        cut_img = gray[y:y+h, x:x+w]
-        
         # Create transform
         corners = sorted(np.concatenate(license_contour).tolist())
         pts = self.order_points(corners)
@@ -217,17 +240,21 @@ def fit_img(img):
 
 def main():
     data = load_license_plates()
-    
+    epsilon = 0.01
     key = ord('a')
     i = 0
     flag = True
     while key != ord('q'):
         src = data[i]['img']
-        image_search = ImageSearch(src, flag)
+        image_search = ImageSearch(src, epsilon)
 
         plate = image_search()
-        cv2.imshow("src", cv2.resize(src, None, fx=1080/src.shape[1], fy=1080/src.shape[1]))
-        cv2.imshow("plate", cv2.resize(plate, None, fx=1080/plate.shape[1], fy=1080/plate.shape[1]))
+        src = cv2.resize(src, None, fx=1080/src.shape[1], fy=1080/src.shape[1])
+        plate = cv2.resize(plate, None, fx=1080/plate.shape[1], fy=1080/plate.shape[1])
+        plate = cv2.rectangle(plate, (5, 0), (1, 30), (255, 255, 255), -1)
+        plate = cv2.putText(plate, f'ID: {i:02}', (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.FILLED)
+        cv2.imshow("src", src)
+        cv2.imshow("plate", plate)
 
         key = cv2.waitKey(50)
         if key == ord('h'):
@@ -238,5 +265,13 @@ def main():
             flag = True
         else:
             flag = False
+
+        if key == ord('z'):
+            epsilon = max(0.01, epsilon - 0.01)
+            print(epsilon)
+        elif key == ord('x'):
+            epsilon += 0.01
+            print(epsilon)
+
 if __name__ == "__main__":
     main()
