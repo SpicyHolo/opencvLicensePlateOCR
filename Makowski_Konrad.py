@@ -20,7 +20,7 @@ def main():
         img = d['img']
         filename = d['filename']
 
-        image_search = imageSearch(img, epsilon=0.03, emergency_number='PO2137')
+        image_search = imageSearch(img, epsilon=0.03, emergency_number='PO333KU')
         detected_num = image_search.getLicenseNumber()
         output_data[filename] = detected_num
 

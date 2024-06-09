@@ -51,6 +51,7 @@ And applied some median blur and binary + Otsu thresholding.
 I used a font to generate pattern images, and then used OpenCV's `cv2.matchTemplate()`, to find the character pattern with highest correlation.
 Before that, I scale the target image to template's dimension, which works suprisingly well.
 
+I'm also matching only letters for first two characters, since this is the Polish format of plate numbers.
 # Results
 I was able to achieve around: $0.74\%$ accuracy on test dataset.
 
