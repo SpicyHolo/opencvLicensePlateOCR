@@ -11,7 +11,7 @@ class pattern_match:
         self.font_size = 1.3*image_size
 
         self.patterns = self.generatePatterns()
-
+        self.letters = {k: v for k, v in self.patterns.items() if k in string.ascii_uppercase}
         [cv2.imwrite(f"./licensePlateOCR/assets/patterns/{char}.jpg", img) for char, img in self.patterns.items()]
 
     def generatePatterns(self):
@@ -37,35 +37,13 @@ class pattern_match:
             patterns[char] = inverted
         return patterns
     
-    def match(self, image):
-        max = 0
+    def match(self, image, only_letters=False):
         detected = []
-        for char, pattern in self.patterns.items():
-            res = cv2.matchTemplate(image, pattern,cv2.TM_CCOEFF) 
+        patterns = self.letters if only_letters else self.patterns
+        for char, pattern in patterns.items():
+            image_scaled = cv2.resize(image, pattern.shape)
+            res = cv2.matchTemplate(image_scaled, pattern,cv2.TM_CCOEFF) 
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             detected.append((char, max_val))
-        return sorted(detected, key=lambda a: a[1])
-
-    def match2(self, image):
-        # Initialize SURF
-        orb = cv2.ORB_create()
-
-        # Compute keypoints, descriptors
-        kp_img, des_img = orb.detectAndCompute(image, None)
-        
-        # brute-force matcher
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-
-        # Find best match
-        characters_score = {}
-        for char, pattern in self.patterns.items():
-            # Compute template keyponts, descriptors
-            kp_pattern, des_pattern = orb.detectAndCompute(pattern, None)
-
-            # Match
-            matches = bf.match(des_pattern, des_img)
-            match_score = len(matches)
-            characters_score[char] = match_score
-
-        best_char = max(characters_score, key=characters_score.get)
-        return best_char
+        detected = sorted(detected, key=lambda a: a[1], reverse=True)
+        return detected[0][0]
