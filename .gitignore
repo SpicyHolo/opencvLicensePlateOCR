@@ -1,2 +1,4 @@
 .venv/
 data/
+output.json
+assets/patterns/*.jpg
