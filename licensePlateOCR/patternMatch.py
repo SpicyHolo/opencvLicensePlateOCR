@@ -8,11 +8,11 @@ class pattern_match:
     def __init__(self, font_path, image_size):
         self.font_path = font_path
         self.image_size = image_size
-        self.font_size = 1.3*image_size
+        self.font_size = int(1.3*image_size)
 
         self.patterns = self.generatePatterns()
         self.letters = {k: v for k, v in self.patterns.items() if k in string.ascii_uppercase}
-        [cv2.imwrite(f"./licensePlateOCR/assets/patterns/{char}.jpg", img) for char, img in self.patterns.items()]
+        #[cv2.imwrite(f"./licensePlateOCR/assets/patterns/{char}.jpg", img) for char, img in self.patterns.items()]
 
     def generatePatterns(self):
         font = ImageFont.truetype(self.font_path, self.font_size)
