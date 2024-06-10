@@ -1,9 +1,9 @@
 # opencv license plate recognision
 The project's goal is to recognize license plate number on a static image.
 With the following assumptions:
-- Plates on a photo won't be tilted to more than $\pm 45^{\dot}$ degrees relative to horizontal position.
+- Plates on a photo won't be tilted to more than $\pm 45^{\circ}$ degrees relative to horizontal position.
 - Plate's longer edge will take at least 0.33 of the photo's wid`th
-- Angle between camera's optic axis and the plate's surface won't be bigger than $\pm 45^{\dot}$
+- Angle between camera's optic axis and the plate's surface won't be bigger than $\pm 45^{\circ}$
 - Data contains photos of Polish plates, black characters on white backgroud (7 or 8 characters on each).
 - Photos can have different picture resolution.
 
